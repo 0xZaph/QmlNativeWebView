@@ -17,9 +17,9 @@ if(WIN32)
 endif()
 
 
-find_package(Qt6 6.5 REQUIRED COMPONENTS Core Quick QuickWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Core Quick QuickWidgets)
 
-qt_standard_project_setup(REQUIRES 6.5)
+qt_standard_project_setup()
 
 # WebView2 setup
 if(MSVC)
@@ -27,9 +27,7 @@ if(MSVC)
 endif()
 
 set(PROJECT_SOURCES
-        main.cpp
         customwebview.h
-
 )
 
 # Platform-specific implementations of Custom Web View.
@@ -43,7 +41,7 @@ elseif (UNIX AND ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     set(PROJECT_SOURCES ${PROJECT_SOURCES} customwebview_nix.cpp)
 endif ()
 
-qt_add_executable(NativeWebView
+qt_add_library(NativeWebView STATIC
     ${PROJECT_SOURCES}
 )
 
@@ -51,9 +49,9 @@ qt_add_qml_module(NativeWebView
     URI NativeWebView
     VERSION 1.0
     QML_FILES
-        Main.qml
         NativeWebView.qml
-        SOURCES
+    SOURCES
+        ${PROJECT_SOURCES}
 )
 
 target_link_libraries(NativeWebView PRIVATE
@@ -63,7 +61,7 @@ target_link_libraries(NativeWebView PRIVATE
 
 if (APPLE)
     target_link_libraries(${PROJECT_NAME}
-      PUBLIC
+      PRIVATE
       "-framework WebKit"
      )
 elseif(WIN32)
@@ -71,24 +69,10 @@ elseif(WIN32)
   target_link_libraries(${PROJECT_NAME} PRIVATE unofficial::webview2::webview2)
 endif()
 
-
-# Qt for iOS sets MACOSX_BUNDLE_GUI_IDENTIFIER automatically since Qt 6.1.
-# If you are developing for iOS or macOS you should consider setting an
-# explicit, fixed bundle identifier manually though.
-set_target_properties(NativeWebView PROPERTIES
-#    MACOSX_BUNDLE_GUI_IDENTIFIER com.example.NativeWebView
-    MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
-    MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}
-    MACOSX_BUNDLE TRUE
-    WIN32_EXECUTABLE TRUE
-)
-
-
-
 include(GNUInstallDirs)
 install(TARGETS NativeWebView
-    BUNDLE DESTINATION .
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 

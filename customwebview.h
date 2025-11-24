@@ -14,6 +14,7 @@ Q_FORWARD_DECLARE_OBJC_CLASS(WKNavigation);
 
 class CustomWebView : public QWindow {
   Q_OBJECT
+  QML_ELEMENT
   Q_PROPERTY(QUrl url READ url WRITE setUrl NOTIFY urlChanged)
   Q_PROPERTY(bool isInitialized READ isInitialized NOTIFY isInitializedChanged)
 

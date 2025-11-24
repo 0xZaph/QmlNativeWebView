@@ -1,26 +1,31 @@
 import QtQuick
+import NativeWebView
 
 WindowContainer {
     property url url
 
-    window: webViewWindow
+    CustomWebView {
+        id: webView
+    }
+
+    window: webView
 
     Component.onCompleted: {
         console.log("WindowContainer - component completed");
-        webViewWindow.reset();
+        webView.reset();
     }
 
     Connections {
-        target: webViewWindow
+        target: webView
         function onIsInitializedChanged() {
-            if (webViewWindow.isInitialized) {
+            if (webView.isInitialized) {
                 console.log("NativeWebView is properly initalized now...");
-                webViewWindow.updateWebViewBounds(width, height);
+                webView.updateWebViewBounds(width, height);
             }
         }
     }
 
     onUrlChanged: {
-        webViewWindow.url = url;
+        webView.url = url;
     }
 }
