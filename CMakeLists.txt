@@ -49,7 +49,7 @@ qt_add_qml_module(NativeWebView
     URI NativeWebView
     VERSION 1.0
     QML_FILES
-        NativeWebView.qml
+        QmlNativeWebView.qml
     SOURCES
         ${PROJECT_SOURCES}
 )

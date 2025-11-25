@@ -27,10 +27,15 @@ class CustomWebView : public QWindow {
 
   Q_INVOKABLE void setUrl(const QUrl &url);
   Q_INVOKABLE void reset();
+  Q_INVOKABLE void evaluateJavaScript(const QString &script,
+                                      const QJSValue &callback = QJSValue());
+  Q_INVOKABLE void clearBrowsingData();
 
   signals:
   void isInitializedChanged();
   void urlChanged(const QUrl &url);
+  void navigationCompleted(bool success);
+  void messageReceived(const QString &message);
 
   public slots:
   void updateWebViewBounds(int width, int height);
@@ -57,6 +62,8 @@ class CustomWebView : public QWindow {
 
   QString m_userDataFolder;
   EventRegistrationToken m_navigationStartingToken;
+  EventRegistrationToken m_navigationCompletedToken;
+  EventRegistrationToken m_webMessageReceivedToken;
 #elif defined(Q_OS_MAC)
   WKWebView *_wkWebView;
 

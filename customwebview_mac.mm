@@ -6,12 +6,14 @@
 #include <QWindow>
 #import <WebKit/WebKit.h>
 
-@interface CustomWebViewDelegate : NSObject <WKNavigationDelegate> {
+@interface CustomWebViewDelegate : NSObject <WKNavigationDelegate, WKScriptMessageHandler> {
   CustomWebView *qWebView;
 }
 - (CustomWebViewDelegate *)initWithWebView:(CustomWebView *)webViewPrivate;
 - (void)webView:(WKWebView *)webView
     didFinishNavigation:(WKNavigation *)navigation;
+- (void)userContentController:(WKUserContentController *)userContentController
+      didReceiveScriptMessage:(WKScriptMessage *)message;
 @end
 
 @implementation CustomWebViewDelegate
@@ -27,9 +29,19 @@
 - (void)webView:(WKWebView *)webView
     didFinishNavigation:(WKNavigation *)navigation {
   Q_UNUSED(webView);
-  if (qWebView->wkNavigation != navigation)
-    return;
+  Q_UNUSED(navigation);
+  qDebug() << "didFinishNavigation called";
   Q_EMIT qWebView->urlChanged(qWebView->url());
+  Q_EMIT qWebView->navigationCompleted(true);
+}
+
+- (void)userContentController:(WKUserContentController *)userContentController
+      didReceiveScriptMessage:(WKScriptMessage *)message {
+  Q_UNUSED(userContentController);
+  if ([message.body isKindOfClass:[NSString class]]) {
+    QString msg = QString::fromNSString((NSString *)message.body);
+    Q_EMIT qWebView->messageReceived(msg);
+  }
 }
 
 @end
@@ -51,18 +63,17 @@ void CustomWebView::initialize() {
       [webView.configuration.preferences setValue:@YES
                                            forKey:@"developerExtrasEnabled"];
 #endif
-      WKWebsiteDataStore *dataStore = [WKWebsiteDataStore defaultDataStore];
-      NSSet *websiteDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
-      NSDate *dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
-      [dataStore removeDataOfTypes:websiteDataTypes
-                     modifiedSince:dateFrom
-                 completionHandler:^{
-                   NSLog(@"All website data has been cleared");
-                 }];
 
       _wkWebView = webView;
       _wkWebView.navigationDelegate =
           [[CustomWebViewDelegate alloc] initWithWebView:this];
+
+      WKUserContentController *userContentController =
+          _wkWebView.configuration.userContentController;
+      [userContentController
+          addScriptMessageHandler:[[CustomWebViewDelegate alloc]
+                                      initWithWebView:this]
+                             name:@"messageHandler"];
 
       // Create a child QWindow from the WKWebView
       m_childWindow = QWindow::fromWinId(WId(_wkWebView));
@@ -111,11 +122,51 @@ void CustomWebView::reset() {
 void CustomWebView::setUrl(const QUrl &url) {
   if (m_isInitialized && _wkWebView) {
     NSURL *nsurl = url.toNSURL();
-    [_wkWebView loadRequest:[NSURLRequest requestWithURL:nsurl]];
+    wkNavigation = [_wkWebView loadRequest:[NSURLRequest requestWithURL:nsurl]];
     qDebug() << __FUNCTION__ << "Navigated to: " << url;
   } else {
     m_pendingUrl = url;
   }
+}
+
+void CustomWebView::evaluateJavaScript(const QString &script,
+                                       const QJSValue &callback) {
+  if (m_isInitialized && _wkWebView) {
+    NSString *nsScript = script.toNSString();
+    QJSValue cb = callback;
+    [_wkWebView evaluateJavaScript:nsScript
+                 completionHandler:^(id _Nullable result,
+                                     NSError *_Nullable error) {
+                   if (cb.isCallable()) {
+                     QJSValueList args;
+                     if (error) {
+                       args << QJSValue(QString::fromNSString(
+                                   error.localizedDescription));
+                       args << QJSValue(true); // isError
+                     } else {
+                       // Convert result to string using description
+                       QString resultStr;
+                       if (result != nil) {
+                         resultStr = QString::fromNSString([result description]);
+                       }
+                       args << QJSValue(resultStr);
+                       args << QJSValue(false); // isError
+                     }
+                     const_cast<QJSValue &>(cb).call(args);
+                   }
+                 }];
+  }
+}
+
+void CustomWebView::clearBrowsingData() {
+  WKWebsiteDataStore *dataStore = [WKWebsiteDataStore defaultDataStore];
+  NSSet *websiteDataTypes = [WKWebsiteDataStore allWebsiteDataTypes];
+  NSDate *dateFrom = [NSDate dateWithTimeIntervalSince1970:0];
+  [dataStore removeDataOfTypes:websiteDataTypes
+                 modifiedSince:dateFrom
+             completionHandler:^{
+               qDebug() << "Browsing data cleared";
+             }];
 }
 
 void CustomWebView::updateWebViewBounds(int width, int height) {

@@ -50,6 +50,8 @@ void CustomWebView::initialize() {
 void CustomWebView::cleanup() {
   if (m_webView) {
     m_webView->remove_NavigationStarting(m_navigationStartingToken);
+    m_webView->remove_NavigationCompleted(m_navigationCompletedToken);
+    m_webView->remove_WebMessageReceived(m_webMessageReceivedToken);
   }
   if (m_webViewController) {
     m_webViewController->Close();
@@ -147,6 +149,91 @@ void CustomWebView::setupNavigationEventHandler() {
             })
             .Get(),
         &m_navigationStartingToken);
+  }
+
+  if (m_webView) {
+    m_webView->add_NavigationCompleted(
+        Callback<ICoreWebView2NavigationCompletedEventHandler>(
+            [this](ICoreWebView2 *sender,
+                   ICoreWebView2NavigationCompletedEventArgs *args) -> HRESULT {
+              Q_UNUSED(sender);
+              BOOL success;
+              args->get_IsSuccess(&success);
+              emit navigationCompleted(success);
+              return S_OK;
+            })
+            .Get(),
+        &m_navigationCompletedToken);
+
+    m_webView->add_WebMessageReceived(
+        Callback<ICoreWebView2WebMessageReceivedEventHandler>(
+            [this](ICoreWebView2 *sender,
+                   ICoreWebView2WebMessageReceivedEventArgs *args) -> HRESULT {
+              Q_UNUSED(sender);
+              LPWSTR message;
+              args->TryGetWebMessageAsString(&message);
+              QString qMessage = QString::fromWCharArray(message);
+              CoTaskMemFree(message);
+              emit messageReceived(qMessage);
+              return S_OK;
+            })
+            .Get(),
+        &m_webMessageReceivedToken);
+  }
+}
+
+void CustomWebView::evaluateJavaScript(const QString &script,
+                                       const QJSValue &callback) {
+  if (m_isInitialized && m_webView) {
+    std::wstring scriptW = script.toStdWString();
+    QJSValue cb = callback;
+    m_webView->ExecuteScript(
+        scriptW.c_str(),
+        Callback<ICoreWebView2ExecuteScriptCompletedHandler>(
+            [this, cb](HRESULT result, LPCWSTR resultObjectAsJson) -> HRESULT {
+              if (cb.isCallable()) {
+                QJSValueList args;
+                if (SUCCEEDED(result)) {
+                  QString json = QString::fromWCharArray(resultObjectAsJson);
+                  args << QJSValue(json);
+                  args << QJSValue(false); // isError
+                } else {
+                  args << QJSValue("Error executing script");
+                  args << QJSValue(true); // isError
+                }
+                const_cast<QJSValue &>(cb).call(args);
+              }
+              return S_OK;
+            })
+            .Get());
+  }
+}
+
+void CustomWebView::clearBrowsingData() {
+  if (m_isInitialized && m_webView) {
+    ICoreWebView2_13 *webView13;
+    m_webView->QueryInterface(IID_PPV_ARGS(&webView13));
+    if (webView13) {
+      ICoreWebView2Profile *profile;
+      webView13->get_Profile(&profile);
+      if (profile) {
+        ICoreWebView2Profile2 *profile2;
+        profile->QueryInterface(IID_PPV_ARGS(&profile2));
+        if (profile2) {
+          profile2->ClearBrowsingDataAll(
+              Callback<ICoreWebView2ClearBrowsingDataCompletedHandler>(
+                  [](HRESULT result) -> HRESULT {
+                    if (SUCCEEDED(result)) {
+                      qDebug() << "Browsing data cleared";
+                    } else {
+                      qDebug() << "Failed to clear browsing data";
+                    }
+                    return S_OK;
+                  })
+                  .Get());
+        }
+      }
+    }
   }
 }
 
